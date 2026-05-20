@@ -115,9 +115,11 @@ void APIENTRY MJDrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCount, UINT
 }
 
 DWORD WINAPI MainThread(LPVOID lpParameter) {
+	Log("MainThread started, waiting for F7");
 	while (!GetAsyncKeyState(VK_F7) & 1) {
 		Sleep(1);
 	}
+	Log("F7 detected, waiting for game window focus");
 	bool WindowFocus = false;
 	while (WindowFocus == false) {
 		DWORD ForegroundWindowProcessID;
@@ -128,22 +130,9 @@ DWORD WINAPI MainThread(LPVOID lpParameter) {
 			Process::Handle = GetCurrentProcess();
 			Process::Hwnd = GetForegroundWindow();
 
-			//RECT TempRect;
-			//GetWindowRect(Process::Hwnd, &TempRect);
-			//Process::WindowWidth = TempRect.right - TempRect.left;
-			//Process::WindowHeight = TempRect.bottom - TempRect.top;
-
-			//char TempTitle[MAX_PATH];
-			//GetWindowText(Process::Hwnd, TempTitle, sizeof(TempTitle));
-			//Process::Title = TempTitle;
-
-			//char TempClassName[MAX_PATH];
-			//GetClassName(Process::Hwnd, TempClassName, sizeof(TempClassName));
-			//Process::ClassName = TempClassName;
-
-			//char TempPath[MAX_PATH];
-			//GetModuleFileNameEx(Process::Handle, NULL, TempPath, sizeof(TempPath));
-			//Process::Path = TempPath;
+			char TempTitle[MAX_PATH] = {};
+			GetWindowTextA(Process::Hwnd, TempTitle, sizeof(TempTitle));
+			Log("Window focus acquired: hwnd=0x%p title=\"%s\"", (void*)Process::Hwnd, TempTitle);
 
 			WindowFocus = true;
 		}
@@ -152,9 +141,14 @@ DWORD WINAPI MainThread(LPVOID lpParameter) {
 	bool InitHook = false;
 	while (InitHook == false) {
 		if (DirectX11::Init() == true) {
-		    CreateHook(8, (void**)&oIDXGISwapChainPresent, MJPresent);
-			CreateHook(12, (void**)&oID3D11DrawIndexed, MJDrawIndexed);
+			Log("DirectX11::Init() succeeded, installing hooks");
+			bool h1 = CreateHook(8,  (void**)&oIDXGISwapChainPresent, MJPresent);
+			bool h2 = CreateHook(12, (void**)&oID3D11DrawIndexed,      MJDrawIndexed);
+			Log("Hooks installed: Present=%d DrawIndexed=%d", (int)h1, (int)h2);
 			InitHook = true;
+		} else {
+			Log("DirectX11::Init() failed, retrying...");
+			Sleep(100);
 		}
 	}
 	return 0;
@@ -164,9 +158,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
 	switch (dwReason) {
 	case DLL_PROCESS_ATTACH:
 		DisableThreadLibraryCalls(hModule);
+		gLogModule = hModule;
+		gLogTag = "DX11";
+		Log("DLL attached");
 		if (ChecktDirectXVersion(DirectXVersion.D3D11) == true) {
+			Log("D3D11 detected, starting MainThread");
 			Process::Module = hModule;
 			CreateThread(0, 0, MainThread, 0, 0, 0);
+		} else {
+			Log("ChecktDirectXVersion(D3D11) returned false — thread not started");
 		}
 		break;
 	case DLL_PROCESS_DETACH:

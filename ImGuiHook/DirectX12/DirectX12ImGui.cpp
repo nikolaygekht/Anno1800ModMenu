@@ -193,9 +193,11 @@ void APIENTRY MJDrawIndexedInstanced(ID3D12GraphicsCommandList* dCommandList, UI
 }
 
 DWORD WINAPI MainThread(LPVOID lpParameter) {
+	Log("MainThread started, waiting for F7");
 	while (!GetAsyncKeyState(VK_F7) & 1) {
 		Sleep(1);
 	}
+	Log("F7 detected, waiting for game window focus");
 	bool WindowFocus = false;
 	while (WindowFocus == false) {
 		DWORD ForegroundWindowProcessID;
@@ -206,35 +208,40 @@ DWORD WINAPI MainThread(LPVOID lpParameter) {
 			Process::Handle = GetCurrentProcess();
 			Process::Hwnd = GetForegroundWindow();
 
-			
 			RECT TempRect;
 			GetWindowRect(Process::Hwnd, &TempRect);
 			Process::WindowWidth = TempRect.right - TempRect.left;
 			Process::WindowHeight = TempRect.bottom - TempRect.top;
 
-			char TempTitle[MAX_PATH];
-			GetWindowText(Process::Hwnd, TempTitle, sizeof(TempTitle));
+			char TempTitle[MAX_PATH] = {};
+			GetWindowTextA(Process::Hwnd, TempTitle, sizeof(TempTitle));
 			Process::Title = TempTitle;
 
-			char TempClassName[MAX_PATH];
-			GetClassName(Process::Hwnd, TempClassName, sizeof(TempClassName));
+			char TempClassName[MAX_PATH] = {};
+			GetClassNameA(Process::Hwnd, TempClassName, sizeof(TempClassName));
 			Process::ClassName = TempClassName;
 
-			char TempPath[MAX_PATH];
-			GetModuleFileNameEx(Process::Handle, NULL, TempPath, sizeof(TempPath));
+			char TempPath[MAX_PATH] = {};
+			GetModuleFileNameExA(Process::Handle, NULL, TempPath, sizeof(TempPath));
 			Process::Path = TempPath;
 
+			Log("Window focus acquired: hwnd=0x%p title=\"%s\" class=\"%s\"", (void*)Process::Hwnd, TempTitle, TempClassName);
 			WindowFocus = true;
 		}
 	}
 	bool InitHook = false;
 	while (InitHook == false) {
 		if (DirectX12::Init() == true) {
-			CreateHook(54, (void**)&oExecuteCommandLists, MJExecuteCommandLists);
-			CreateHook(140, (void**)&oPresent, MJPresent);
-			CreateHook(84, (void**)&oDrawInstanced, MJDrawInstanced);
-			CreateHook(85, (void**)&oDrawIndexedInstanced, MJDrawIndexedInstanced);
+			Log("DirectX12::Init() succeeded, installing hooks");
+			bool h1 = CreateHook(54,  (void**)&oExecuteCommandLists,    MJExecuteCommandLists);
+			bool h2 = CreateHook(140, (void**)&oPresent,                 MJPresent);
+			bool h3 = CreateHook(84,  (void**)&oDrawInstanced,           MJDrawInstanced);
+			bool h4 = CreateHook(85,  (void**)&oDrawIndexedInstanced,    MJDrawIndexedInstanced);
+			Log("Hooks installed: ExecuteCommandLists=%d Present=%d DrawInstanced=%d DrawIndexedInstanced=%d", (int)h1, (int)h2, (int)h3, (int)h4);
 			InitHook = true;
+		} else {
+			Log("DirectX12::Init() failed, retrying...");
+			Sleep(100);
 		}
 	}
 	return 0;
@@ -244,9 +251,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved) {
 	switch (dwReason) {
 	case DLL_PROCESS_ATTACH:
 		DisableThreadLibraryCalls(hModule);
+		gLogModule = hModule;
+		gLogTag = "DX12";
+		Log("DLL attached");
 		if (ChecktDirectXVersion(DirectXVersion.D3D12) == true) {
+			Log("D3D12 detected, starting MainThread");
 			Process::Module = hModule;
 			CreateThread(0, 0, MainThread, 0, 0, 0);
+		} else {
+			Log("ChecktDirectXVersion(D3D12) returned false — thread not started");
 		}
 		break;
 	case DLL_PROCESS_DETACH:

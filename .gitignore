@@ -1,0 +1,30 @@
+# Final build outputs
+Build/
+
+# Intermediate build directories (Visual Studio x64 output)
+# Note: NOT using a blanket x64/ — the DirectX SDK has Lib/x64/ which must be kept
+ImGuiHook/DirectX11/x64/
+ImGuiHook/DirectX12/x64/
+ProxyDLL/x64/
+
+# Compiled object files (safe globally — no SDK .obj files)
+*.obj
+*.pch
+
+# Debug databases (safe globally — no SDK .pdb files)
+*.pdb
+
+# Linker-generated import library and export file for our DLLs
+# (not using *.lib globally — DirectX SDK ships precompiled .lib files we need to keep)
+*.exp
+
+# MSBuild tracking and incremental build state
+*.tlog
+*.lastbuildstate
+*.iobj
+*.ipdb
+
+# Visual Studio IDE
+.vs/
+*.user
+*.suo

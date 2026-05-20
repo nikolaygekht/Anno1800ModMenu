@@ -2,7 +2,46 @@
 #include <stdint.h>
 #include <assert.h>
 #include <psapi.h>
+#include <cstdio>
+#include <cstdarg>
 #include "..\ImGuiHook\Directories\MinHook\Include\MinHook.h"
+
+static HMODULE gLogModule = NULL;
+static const char* gLogTag = "?";
+
+static void Log(const char* fmt, ...) {
+    // Build path: <module_dir>/../../logs/modmenu.log  (game root / logs /)
+    wchar_t path[MAX_PATH];
+    GetModuleFileNameW(gLogModule, path, MAX_PATH);
+    wchar_t* slash = wcsrchr(path, L'\\'); if (slash) *slash = L'\0'; // strip filename -> Bin\Win64
+    slash = wcsrchr(path, L'\\');          if (slash) *slash = L'\0'; // strip Win64   -> Bin
+    slash = wcsrchr(path, L'\\');          if (slash) *slash = L'\0'; // strip Bin     -> game root
+    wcscat_s(path, MAX_PATH, L"\\logs");
+    CreateDirectoryW(path, NULL);
+    wcscat_s(path, MAX_PATH, L"\\modmenu.log");
+
+    FILE* f = nullptr;
+    _wfopen_s(&f, path, L"a");
+    if (!f) return;
+
+    // Get current process exe filename for easy identification
+    wchar_t exePath[MAX_PATH] = {};
+    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    const wchar_t* exeName = wcsrchr(exePath, L'\\');
+    exeName = exeName ? exeName + 1 : exePath;
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    fprintf(f, "[%02d:%02d:%02d.%03d] [%s pid=%lu exe=%ls] ",
+            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+            gLogTag, GetCurrentProcessId(), exeName);
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(f, fmt, args);
+    va_end(args);
+    fputc('\n', f);
+    fclose(f);
+}
 
 #if defined _M_X64
 typedef uint64_t uintx_t;
@@ -21,25 +60,25 @@ struct _DirectXVersion {
 }DirectXVersion;
 
 bool ChecktDirectXVersion(int _DirectXVersion) {
-	if (_DirectXVersion = DirectXVersion.D3D12) {
+	if (_DirectXVersion == DirectXVersion.D3D12) {
 		if (GetModuleHandle("d3d12.dll") != NULL) {
 			return true;
 		}
 	}
 
-	if (_DirectXVersion = DirectXVersion.D3D11) {
+	if (_DirectXVersion == DirectXVersion.D3D11) {
 		if (GetModuleHandle("d3d11.dll") != NULL) {
 			return true;
 		}
 	}
 
-	if (_DirectXVersion = DirectXVersion.D3D10) {
+	if (_DirectXVersion == DirectXVersion.D3D10) {
 		if (GetModuleHandle("d3d10.dll") != NULL) {
 			return true;
 		}
 	}
 
-	if (_DirectXVersion = DirectXVersion.D3D9) {
+	if (_DirectXVersion == DirectXVersion.D3D9) {
 		if (GetModuleHandle("d3d9.dll") != NULL) {
 			return true;
 		}
@@ -50,8 +89,12 @@ bool ChecktDirectXVersion(int _DirectXVersion) {
 
 WNDCLASSEX WindowClass;
 HWND WindowHwnd;
+// Unique per-DLL window class name — avoids collision when DX11 and DX12 hooks both load
+static char gWindowClassName[32] = "MJ";
 
 bool InitWindow() {
+	// Use gLogTag ("DX11" or "DX12") to make the class name unique within the process
+	wsprintfA(gWindowClassName, "MJ_%s", gLogTag);
 
 	WindowClass.cbSize = sizeof(WNDCLASSEX);
 	WindowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -63,7 +106,7 @@ bool InitWindow() {
 	WindowClass.hCursor = NULL;
 	WindowClass.hbrBackground = NULL;
 	WindowClass.lpszMenuName = NULL;
-	WindowClass.lpszClassName = "MJ";
+	WindowClass.lpszClassName = gWindowClassName;
 	WindowClass.hIconSm = NULL;
 	RegisterClassEx(&WindowClass);
 	WindowHwnd = CreateWindow(WindowClass.lpszClassName, "DirectX Window", WS_OVERLAPPEDWINDOW, 0, 0, 100, 100, NULL, NULL, WindowClass.hInstance, NULL);
@@ -75,7 +118,7 @@ bool InitWindow() {
 
 bool DeleteWindow() {
 	DestroyWindow(WindowHwnd);
-	UnregisterClass(WindowClass.lpszClassName, WindowClass.hInstance);
+	UnregisterClass(gWindowClassName, WindowClass.hInstance);
 	if (WindowHwnd != NULL) {
 		return false;
 	}
